@@ -1,0 +1,1051 @@
+@import './fonts.css';
+
+/* ============================================================================
+   LOOP ROOM — "the machine"
+   A dark room with four coloured lights in it. Anodised metal decks, lit pads,
+   a beam that sweeps them in time. Surfaces you work on stay still; the two
+   surfaces you only watch are allowed to move.
+   ========================================================================= */
+
+:root {
+  --bg: #0c0913;
+  --bg-deep: #070510;
+  --surface: #16121e;
+  --surface-2: #1e1929;
+  --surface-3: #2a2337;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.15);
+
+  --ink: #f4efe8;
+  --ink-dim: #b3aabf;
+  /* Lifted to 5.9:1 on --bg. The old value was 3.7:1 and carried real labels. */
+  --ink-faint: #928aa6;
+
+  --t1: #ff6b5a;
+  --t2: #ffc24b;
+  --t3: #5fd6a6;
+  --t4: #8fa8ff;
+
+  --radius: 16px;
+  --radius-sm: 9px;
+
+  /* Depth: offset and blur, always. A halo is a light, not a shadow. */
+  --lift-1: 0 2px 6px -2px rgba(0, 0, 0, 0.6), 0 8px 22px -12px rgba(0, 0, 0, 0.8);
+  --lift-2: 0 6px 14px -6px rgba(0, 0, 0, 0.7), 0 26px 60px -28px rgba(0, 0, 0, 0.95);
+  --lift-3: 0 10px 24px -8px rgba(0, 0, 0, 0.75), 0 44px 90px -36px rgba(0, 0, 0, 1);
+  /* The machined top edge that makes a slab read as metal, not as a div. */
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --display: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Written every frame from the shared loop clock. */
+  --beat: 0;
+  --phase: 0;
+
+  color-scheme: dark;
+  accent-color: var(--t2);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  /* Painted onto the body and scrolling with it. Both viewport-fixed versions
+     of this (a fixed pseudo-element, then background-attachment: fixed) left a
+     black band across the top once the page was scrolled to the end. Only the
+     WebGL canvas is fixed now, and it composites correctly. */
+  background-color: var(--bg);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-image:
+    radial-gradient(1200px 760px at 76% -14%, rgba(143, 168, 255, 0.13), transparent 60%),
+    radial-gradient(1000px 680px at 6% 106%, rgba(255, 107, 90, 0.12), transparent 58%),
+    radial-gradient(700px 500px at 50% 50%, rgba(95, 214, 166, 0.05), transparent 70%);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* clip, not hidden: overflow-x hidden turns body into a scroll container,
+     which quietly breaks position:sticky on the header. */
+  overflow-x: clip;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.035em; }
+
+/* Chrome you drag across shouldn't highlight like prose. Body copy, the room
+   code and player names stay selectable — people copy those. */
+.track-head, .panel h3, .transport, .meter, .progress, .actionbar, .canvas-badge,
+.filmstrip, .brand, .field label, .divider, .timeline-mark b {
+  user-select: none;
+  -webkit-user-select: none;
+}
+p { margin: 0; }
+
+button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
+input { font-family: inherit; font-size: inherit; }
+
+/* --- browser surfaces: these ship with defaults that belong to no design --- */
+
+::selection { background: rgba(255, 194, 75, 0.28); color: #fff; }
+
+input, textarea { caret-color: var(--t2); }
+
+:focus-visible {
+  outline: 2px solid var(--t4);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 99px;
+  border: 3px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: #3a3149; }
+
+a { color: var(--t4); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+
+/* Numbers that change in place must not dance. */
+.tnum, output, .stat b, .roomcode, .rowlabel { font-variant-numeric: tabular-nums; }
+
+/* -------------------------------------------------------------- the canvas */
+
+.stage3d {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.app { min-height: 100%; display: flex; flex-direction: column; }
+
+.stagewrap {
+  flex: 1;
+  width: min(1140px, 100%);
+  margin: 0 auto;
+  padding: 30px 20px 104px;
+}
+
+/* ----------------------------------------------------------------- topbar */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  background: rgba(12, 9, 19, 0.78);
+  /* Blur here is doing a job: content scrolls under this bar. */
+  backdrop-filter: blur(16px) saturate(1.3);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+/* The one element that pulses on the beat, and it is the logo. */
+.brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--t1);
+  box-shadow: 0 0 calc(6px + var(--beat) * 14px) rgba(255, 107, 90, calc(0.3 + var(--beat) * 0.6));
+  transform: scale(calc(1 + var(--beat) * 0.35));
+}
+
+/* Where you are in the session. Navigation, in the nav. */
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.progress span {
+  color: var(--ink-faint);
+  padding: 3px 9px;
+  border-radius: 6px;
+  transition: color 220ms var(--ease-out), background 220ms var(--ease-out);
+}
+.progress span.on { color: var(--ink); background: var(--surface-2); }
+.progress span.done { color: var(--ink-dim); }
+.progress em { color: var(--line-strong); font-style: normal; }
+
+.roomcode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--bevel);
+  transition: border-color 160ms, background 160ms;
+}
+.roomcode:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.roomcode small {
+  color: var(--ink-faint);
+  letter-spacing: 0.1em;
+  font-size: 10px;
+}
+
+.roster { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--bevel);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chip .swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 8px currentColor;
+}
+.chip.me { border-color: var(--line-strong); background: var(--surface-2); }
+.chip .role { color: var(--ink-faint); font-size: 11px; }
+
+.iconbtn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--bevel);
+  color: var(--ink-dim);
+  transition: color 160ms, border-color 160ms, background 160ms;
+}
+.iconbtn:hover { color: var(--ink); border-color: var(--line-strong); background: var(--surface-2); }
+
+/* ---------------------------------------------------------------- landing */
+
+.landing {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 72px 20px 64px;
+}
+
+.landing-inner { width: min(620px, 100%); text-align: center; }
+
+.hero-title {
+  /* 96px ceiling, tracking no tighter than -0.04em. Colour comes from the
+     machine behind it, never from gradient text. */
+  font-size: clamp(58px, 11vw, 96px);
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  margin-bottom: 22px;
+  text-wrap: balance;
+}
+.hero-title .l2 { display: block; color: var(--ink); }
+
+.hero-sub {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(19px, 3.4vw, 24px);
+  line-height: 1.4;
+  color: var(--ink-dim);
+  margin: 0 auto 38px;
+  max-width: 34ch;
+}
+
+.panel-solid {
+  background: linear-gradient(180deg, rgba(30, 25, 41, 0.92), rgba(22, 18, 30, 0.92));
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--lift-3), var(--bevel);
+  padding: 24px;
+  text-align: left;
+}
+
+.field { margin-bottom: 14px; }
+.field label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.input {
+  width: 100%;
+  padding: 13px 15px;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  outline: none;
+  box-shadow: inset 0 2px 6px -3px rgba(0, 0, 0, 0.9);
+  transition: border-color 160ms, box-shadow 160ms;
+}
+.input::placeholder { color: var(--ink-faint); }
+.input:focus {
+  border-color: rgba(143, 168, 255, 0.5);
+  box-shadow: inset 0 2px 6px -3px rgba(0, 0, 0, 0.9), 0 0 0 3px rgba(143, 168, 255, 0.14);
+}
+.input.code {
+  font-family: var(--mono);
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  text-align: center;
+  font-size: 19px;
+  text-indent: 0.34em;
+}
+
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: var(--lift-1), var(--bevel);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: transform 140ms var(--ease-out), background 160ms, border-color 160ms,
+    box-shadow 160ms, opacity 160ms;
+}
+.btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  transform: translateY(-1px);
+  box-shadow: var(--lift-2), var(--bevel);
+}
+.btn:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--lift-1); }
+.btn:disabled { opacity: 0.38; cursor: not-allowed; box-shadow: none; }
+
+.btn.primary {
+  background: linear-gradient(180deg, #fffdfa, var(--ink));
+  color: #15111d;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+.btn.primary:hover:not(:disabled) { background: #fff; }
+
+.btn.ghost { background: transparent; border-color: var(--line); box-shadow: none; }
+.btn.ghost:hover:not(:disabled) { background: var(--surface); box-shadow: var(--lift-1); }
+
+.btn.big { padding: 15px 24px; font-size: 16px; }
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+/* The session, drawn as a timeline rather than three identical cards. */
+.timeline {
+  /* Same reason as the hero line: 13px copy can't sit directly on a lit node. */
+  background: radial-gradient(72% 130% at 50% 58%, rgba(9, 6, 16, 0.88), rgba(9, 6, 16, 0) 82%);
+  margin-top: 40px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  padding-top: 26px;
+  text-align: left;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 6%;
+  right: 6%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line-strong) 12%, var(--line-strong) 88%, transparent);
+}
+.timeline-mark { position: relative; }
+.timeline-mark::before {
+  content: '';
+  position: absolute;
+  top: -26px;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mark, var(--ink-faint));
+  box-shadow: 0 0 12px var(--mark, transparent);
+  transform: translateY(2.5px);
+}
+.timeline-mark b {
+  display: block;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+  margin-bottom: 5px;
+  color: var(--ink);
+}
+.timeline-mark span { font-size: 13px; color: var(--ink-dim); line-height: 1.5; }
+
+.err {
+  margin-top: 14px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: rgba(255, 107, 90, 0.1);
+  border: 1px solid rgba(255, 107, 90, 0.3);
+  color: #ffb8ad;
+  font-size: 13.5px;
+}
+
+/* ------------------------------------------------------------ stage header */
+
+.stagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.stagehead h2 {
+  font-size: clamp(30px, 5vw, 46px);
+  line-height: 1;
+  text-wrap: balance;
+}
+.stagehead .lede {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 17.5px;
+  color: var(--ink-dim);
+  margin-top: 12px;
+  max-width: 52ch;
+}
+
+.meter {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+.meter i {
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  display: block;
+  transition: background 260ms var(--ease-out), box-shadow 260ms var(--ease-out);
+}
+.meter i.on { background: var(--ink); box-shadow: 0 0 10px rgba(244, 239, 232, 0.55); }
+
+/* -------------------------------------------------------------- sequencer */
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 18px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--lift-1), var(--bevel);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.tempo { display: flex; align-items: center; gap: 12px; }
+.tempo label {
+  font-size: 11px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.tempo output { font-family: var(--mono); font-size: 13.5px; min-width: 66px; }
+.tempo input[type='range'] { width: 140px; cursor: pointer; }
+
+/* The decks. Four slabs standing in real perspective. */
+.tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  perspective: 1700px;
+  perspective-origin: 50% 26%;
+}
+
+.track {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(176deg, var(--surface-2), var(--surface) 72%);
+  padding: 14px 16px 16px;
+  transform: rotateX(9deg) translateZ(-74px);
+  transform-origin: 50% 120%;
+  box-shadow: var(--lift-1), var(--bevel);
+  opacity: 0.7;
+  transition: transform 460ms var(--ease-out), box-shadow 460ms var(--ease-out),
+    opacity 300ms var(--ease-out), border-color 300ms;
+}
+
+/* Your instrument comes forward and sits level with you. */
+.track.mine {
+  transform: rotateX(0deg) translateZ(42px);
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--tc) 42%, transparent);
+  background:
+    linear-gradient(176deg, color-mix(in srgb, var(--tc) 11%, transparent), transparent 46%),
+    linear-gradient(176deg, var(--surface-2), var(--surface) 72%);
+  box-shadow: var(--lift-3), var(--bevel),
+    0 0 0 1px color-mix(in srgb, var(--tc) 20%, transparent);
+}
+
+.track-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 13px;
+  flex-wrap: wrap;
+}
+.track-name {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 15px;
+  color: var(--tc);
+}
+.track-owner { font-size: 12px; color: var(--ink-faint); }
+.track-hint {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13.5px;
+  color: var(--ink-faint);
+  margin-left: auto;
+}
+
+.pill {
+  padding: 4px 11px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tc) 38%, transparent);
+  background: color-mix(in srgb, var(--tc) 8%, transparent);
+  color: var(--tc);
+  font-weight: 600;
+  transition: background 150ms, border-color 150ms;
+}
+.pill:hover { background: color-mix(in srgb, var(--tc) 18%, transparent); }
+
+.gridwrap { position: relative; transform-style: preserve-3d; }
+
+.gridrow {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 9px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+.gridrow:last-child { margin-bottom: 0; }
+
+.rowlabel {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: right;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.pads {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 3px;
+  transform-style: preserve-3d;
+}
+
+.pad {
+  aspect-ratio: 1 / 1;
+  min-height: 16px;
+  border: none;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 0;
+  transform: translateZ(0);
+  transition: background 110ms, transform 130ms var(--ease-out), box-shadow 130ms;
+}
+.pad.beat { background: rgba(255, 255, 255, 0.095); }
+.pad:hover:not(.on):not(:disabled) { background: rgba(255, 255, 255, 0.2); }
+
+/* A lit pad is a light source: the halo is the point, not a shadow. */
+.pad.on {
+  background: var(--tc);
+  transform: translateZ(7px);
+  box-shadow:
+    0 0 14px -1px color-mix(in srgb, var(--tc) 75%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.pad.on.hit {
+  transform: translateZ(20px) scale(1.14);
+  box-shadow:
+    0 0 26px 1px color-mix(in srgb, var(--tc) 92%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.pad:disabled { cursor: default; }
+
+/* The beam, matching the one sweeping the disc on the landing page. */
+.playhead {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: calc((100% - 53px) / 16);
+  left: 53px;
+  border-radius: 7px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.13),
+    rgba(255, 255, 255, 0.02)
+  );
+  box-shadow: 0 0 26px rgba(255, 240, 225, 0.09);
+  pointer-events: none;
+  transition: transform 70ms linear;
+  transform: translateZ(2px);
+}
+
+/* ------------------------------------------------------------------- draw */
+
+.drawwrap {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 20px;
+  align-items: start;
+}
+
+/* The easel: a slab holding the sheet, tipped back like a drawing board. */
+.canvas-panel {
+  background: linear-gradient(176deg, var(--surface-2), var(--surface) 74%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 15px;
+  box-shadow: var(--lift-3), var(--bevel);
+}
+
+.canvas-stack {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 11px;
+  overflow: hidden;
+  background: #131020;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 8px 30px -14px rgba(0, 0, 0, 0.9);
+}
+.canvas-stack canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.canvas-stack canvas.onion { opacity: 0.2; pointer-events: none; filter: grayscale(0.6); }
+.canvas-stack canvas.live { pointer-events: none; }
+
+.canvas-badge {
+  position: absolute;
+  left: 13px;
+  top: 13px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(7, 5, 16, 0.7);
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.waiting-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: 7px;
+  background: rgba(7, 5, 16, 0.5);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.waiting-veil strong { font-size: 20px; letter-spacing: -0.02em; }
+.waiting-veil span { color: var(--ink-dim); font-size: 13.5px; }
+
+.sidebar { display: flex; flex-direction: column; gap: 14px; }
+
+.panel {
+  background: linear-gradient(176deg, var(--surface-2), var(--surface) 74%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 15px;
+  box-shadow: var(--lift-1), var(--bevel);
+}
+.panel h3 {
+  font-size: 10.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  transition: transform 140ms var(--ease-out), border-color 140ms, box-shadow 140ms;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4), var(--lift-1);
+}
+.swatch-btn:hover { transform: scale(1.14); }
+.swatch-btn.sel {
+  border-color: var(--ink);
+  transform: scale(1.14);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4), 0 0 14px -2px currentColor;
+}
+
+.sizes { display: flex; gap: 8px; align-items: center; }
+.size-btn {
+  flex: 1;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  box-shadow: var(--bevel);
+  display: grid;
+  place-items: center;
+  transition: border-color 150ms, background 150ms;
+}
+.size-btn.sel { border-color: var(--ink); background: var(--surface-3); }
+.size-btn i { display: block; border-radius: 50%; background: var(--ink); }
+
+/* The filmstrip curves away in Z, like frames on a reel. */
+.filmstrip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  perspective: 700px;
+}
+.frame-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #131020;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  box-shadow: var(--lift-1);
+  transition: transform 340ms var(--ease-out), border-color 340ms, box-shadow 340ms;
+}
+.frame-cell img { width: 100%; height: 100%; object-fit: cover; }
+.frame-cell.current {
+  border-color: var(--ink);
+  transform: translateZ(26px);
+  box-shadow: var(--lift-2), 0 0 0 1px rgba(244, 239, 232, 0.2);
+}
+/* The frame the music is on right now. */
+.frame-cell.playing { border-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.frame-cell .owner { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; }
+
+/* ----------------------------------------------------------------- reveal */
+
+/* Experience mode. The film is the page; this just holds space for it and
+   keeps the overlays out of the middle. */
+.reveal-stage {
+  position: relative;
+  min-height: min(74vh, 760px);
+}
+
+.reveal-head {
+  position: relative;
+  z-index: 2;
+  max-width: 44ch;
+}
+.reveal-head h2 {
+  font-size: clamp(30px, 5vw, 46px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+.reveal-head .lede {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 17.5px;
+  color: var(--ink-dim);
+  margin-top: 10px;
+}
+
+.projection-fallback {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 640px);
+  margin: 24px auto 0;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: var(--lift-3);
+  background: #131020;
+}
+.projection-fallback canvas { width: 100%; height: 100%; display: block; }
+
+.rec-dot {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(7, 5, 16, 0.78);
+  border: 1px solid rgba(255, 107, 90, 0.38);
+  color: #ffb8ad;
+  backdrop-filter: blur(8px);
+}
+.rec-dot i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--t1);
+  box-shadow: 0 0 10px var(--t1);
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0.15; } }
+
+/* Credits live in the bar so the middle of the screen stays film. */
+.reveal-bar { align-items: center; }
+.bar-credits {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-right: auto;
+  min-width: 0;
+}
+.bar-credit { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.bar-credit i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 9px currentColor;
+}
+.bar-credit b { font-weight: 600; }
+.bar-credit em { font-style: normal; color: var(--ink-faint); font-size: 12px; }
+.bar-stats {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+
+/* Used by the draw stage's turn-order panel. */
+.credits { display: flex; flex-direction: column; gap: 10px; }
+.credit-line { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+.credit-line .swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 9px currentColor;
+}
+.credit-line .what { color: var(--ink-faint); margin-left: auto; font-size: 12px; text-align: right; }
+
+/* ---------------------------------------------------------------- footer  */
+
+.actionbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 20px;
+  background: rgba(7, 5, 16, 0.86);
+  backdrop-filter: blur(16px) saturate(1.3);
+  border-top: 1px solid var(--line);
+}
+.actionbar .note { font-size: 13px; color: var(--ink-dim); margin-right: auto; }
+.actionbar .note b { color: var(--ink); font-weight: 600; }
+
+.hint-serif { font-family: var(--serif); font-style: italic; color: var(--ink-faint); }
+
+/* ---------------------------------------------- stage change: one authored
+   moment. The old stage sinks and blurs away, the new one rises into focus. */
+
+::view-transition-old(root) {
+  animation: stage-out 260ms var(--ease-in-out) both;
+}
+::view-transition-new(root) {
+  animation: stage-in 460ms var(--ease-out) both;
+}
+@keyframes stage-out {
+  to { opacity: 0; transform: scale(0.985) translateY(-8px); filter: blur(6px); }
+}
+@keyframes stage-in {
+  from { opacity: 0; transform: scale(1.012) translateY(14px); filter: blur(8px); }
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .drawwrap { grid-template-columns: 1fr; }
+  .reveal-stage { min-height: 56vh; }
+  .bar-stats { display: none; }
+  .track-hint { display: none; }
+  .topbar { flex-wrap: wrap; gap: 10px; }
+  .roster { margin-left: 0; width: 100%; }
+  .progress { order: 3; }
+  /* The bar wraps to two or three rows on a phone, so the page needs room to
+     scroll clear of it. */
+  .stagewrap { padding: 20px 10px 168px; }
+  /* Every pixel taken back from the chrome goes into the pads: sixteen steps
+     across 375px is tight enough already. */
+  .track { padding: 12px 10px 12px; }
+  .gridrow { grid-template-columns: 26px 1fr; gap: 5px; }
+  .playhead { width: calc((100% - 31px) / 16); left: 31px; }
+  .pads { gap: 2px; }
+  .pad { border-radius: 4px; }
+  .rowlabel { font-size: 9px; }
+  .stagehead .lede { font-size: 16px; }
+  .actionbar { flex-wrap: wrap; gap: 9px; }
+  .actionbar .note { font-size: 12px; width: 100%; margin-right: 0; }
+  /* Slabs flatten on small screens — perspective on a 375px column is noise. */
+  .track, .track.mine { transform: none; }
+  .timeline { grid-template-columns: 1fr; gap: 22px; padding-top: 0; }
+  .timeline::before { display: none; }
+  .timeline-mark { padding-left: 20px; }
+  .timeline-mark::before { top: 6px; left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Reduce movement, keep the feedback that tells you what happened: pads
+     still light, the playhead still marks the step, colour still changes. */
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .track, .track.mine { transform: none; }
+  .pad.on, .pad.on.hit { transform: none; }
+  .frame-cell.current { transform: none; }
+  .brand-dot { transform: none; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
+
+/* The composite canvas stays in the render tree while the 3D room shows it —
+   a display:none canvas is a risk for captureStream in some browsers. */
+.projection-offscreen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.projection-offscreen canvas { width: 720px; height: 720px; }
+
+/* The 96px wordmark holds its own against the disc. The 20px serif line does
+   not, so it gets a scrim of its own and nothing else does. */
+.landing-inner { position: relative; }
+.hero-sub { position: relative; }
+.hero-sub::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -14% -18%;
+  background: radial-gradient(
+    62% 60% at 50% 50%,
+    rgba(9, 6, 16, 0.88) 0%,
+    rgba(9, 6, 16, 0.66) 50%,
+    rgba(9, 6, 16, 0) 82%
+  );
+  pointer-events: none;
+}
+
+/* Vignette: the room is lit in the middle and dark at the walls. */
+.vignette {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 42%, rgba(7, 5, 14, 0.7) 100%);
+}

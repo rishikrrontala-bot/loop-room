@@ -1,0 +1,14 @@
+# One-click deploy blueprint. The app is a single Node process that serves both
+# the built frontend and the WebSocket room server, so it needs a web service
+# rather than static hosting — the multiplayer will not work on a static host.
+services:
+  - type: web
+    name: loop-room
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
