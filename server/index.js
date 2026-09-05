@@ -157,7 +157,18 @@ const server = createServer(async (req, res) => {
   }
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0])
   let file = join(DIST, normalize(urlPath))
-  if (!file.startsWith(DIST) || !existsSync(file) || urlPath === '/') file = join(DIST, 'index.html')
+  if (!file.startsWith(DIST) || urlPath === '/') {
+    file = join(DIST, 'index.html')
+  } else if (!existsSync(file)) {
+    // Only client routes fall back to the app shell. A missing file that asks
+    // for an extension is a genuine 404 — falling back there returns HTML with
+    // a 200, which makes a broken asset look like a working one.
+    if (extname(urlPath)) {
+      res.writeHead(404, { 'content-type': 'text/plain' })
+      return res.end('Not found')
+    }
+    file = join(DIST, 'index.html')
+  }
   try {
     const body = await readFile(file)
     res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' })
