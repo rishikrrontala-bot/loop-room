@@ -4,7 +4,13 @@
 
 Built for **Code to Connect: Women in Tech Hackathon 2026** — Track 1, *Connect Online*.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rishikrrontala-bot/loop-room)
+**▶ Play it live: [loop-room.onrender.com](https://loop-room.onrender.com)**
+
+Open it on two devices — or two browser tabs — to see the point of it. One person starts a room, the other joins with the four-letter code.
+
+> Hosted on Render's free tier, which sleeps after 15 minutes idle. If the first load takes 30–60 seconds, that's it waking up.
+
+[![Deploy your own](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rishikrrontala-bot/loop-room)
 
 ---
 
