@@ -3,3 +3,6 @@ dist
 .DS_Store
 *.log
 .env
+
+# Demo recordings — uploaded to YouTube/Drive, too large to version
+demo/
