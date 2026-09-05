@@ -4,6 +4,8 @@
 
 Built for **Code to Connect: Women in Tech Hackathon 2026** — Track 1, *Connect Online*.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rishikrrontala-bot/loop-room)
+
 ---
 
 ## What it does
@@ -80,7 +82,18 @@ npm run build
 npm start
 ```
 
-`npm start` serves the built app *and* the WebSocket from a single Node process on `$PORT`, so it deploys to Render, Railway or Fly as one service with no extra configuration.
+`npm start` serves the built app *and* the WebSocket from a single Node process on `$PORT`, so it deploys as one service with no extra configuration.
+
+### Deploying
+
+This needs a **web service**, not static hosting. The multiplayer runs over a WebSocket, so Netlify, GitHub Pages and Vercel's static output won't work — the page would load and the room would never connect.
+
+A `render.yaml` blueprint is committed, so the button above is the whole deploy: it reads the blueprint, builds, and starts the service. Render's free tier supports WebSockets.
+
+Two things worth knowing about the free tier:
+
+- **It sleeps after 15 minutes of inactivity** and takes 30–60 seconds to wake. Open the link a minute before you demo.
+- **Rooms live in memory**, so a sleep clears them. Start a fresh room when you wake it.
 
 ---
 
