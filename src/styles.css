@@ -178,14 +178,12 @@ a { color: var(--t4); text-underline-offset: 3px; text-decoration-thickness: 1px
   white-space: nowrap;
 }
 
-/* The one element that pulses on the beat, and it is the logo. */
-.brand-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--t1);
-  box-shadow: 0 0 calc(6px + var(--beat) * 14px) rgba(255, 107, 90, calc(0.3 + var(--beat) * 0.6));
-  transform: scale(calc(1 + var(--beat) * 0.35));
+/* The mark turns once per loop and breathes on the beat — the same --phase and
+   --beat the audio engine publishes, so it is genuinely in time. */
+.brand-mark { display: block; flex: none; }
+.brand-mark.spin {
+  transform: rotate(calc(var(--phase) * 1turn)) scale(calc(1 + var(--beat) * 0.07));
+  filter: drop-shadow(0 0 calc(2px + var(--beat) * 9px) rgba(255, 107, 90, calc(0.15 + var(--beat) * 0.4)));
 }
 
 /* Where you are in the session. Navigation, in the nav. */
@@ -1007,7 +1005,7 @@ a { color: var(--t4); text-underline-offset: 3px; text-decoration-thickness: 1px
   .track, .track.mine { transform: none; }
   .pad.on, .pad.on.hit { transform: none; }
   .frame-cell.current { transform: none; }
-  .brand-dot { transform: none; }
+  .brand-mark.spin { transform: none; filter: none; }
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 }
 

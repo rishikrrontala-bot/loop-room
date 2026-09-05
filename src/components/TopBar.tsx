@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { RoomState, Stage } from '../types'
 import { TRACKS } from '../config'
 import { Icon } from './Icon'
+import { LogoMark } from './LogoMark'
 
 interface Props {
   state: RoomState
@@ -34,7 +35,7 @@ export function TopBar({ state, you, muted, onToggleMute }: Props) {
   return (
     <header className="topbar">
       <div className="brand">
-        <span className="brand-dot" />
+        <LogoMark size={21} spin />
         Loop Room
       </div>
 

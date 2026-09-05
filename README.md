@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/og.png" alt="Loop Room" width="720">
+</p>
+
 # Loop Room
 
 **Four friends, one browser tab each. Build a loop together, draw a frame each, and leave with a music video none of you could have made alone.**
